@@ -23,3 +23,23 @@ jobs:
             npm install --force
             pm2 kill
             pm2 start src/server.js
+
+      # 성공 알림: 배포가 성공했을 경우에만 실행
+      - name: Send Discord Success Notification
+        if: success() # 이전 단계가 성공했을 경우에만 실행
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{"content": "✅ 배포 완료: AWS EC2로의 배포가 성공적으로 완료되었습니다."}' \
+               $DISCORD_WEBHOOK_URL
+
+      # 실패 알림: 배포가 실패했을 경우에만 실행
+      - name: Send Discord Failure Notification
+        if: failure() # 이전 단계가 실패했을 경우에만 실행
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          curl -H "Content-Type: application/json" \
+               -d '{"content": "❌ 배포 실패: AWS EC2로의 배포가 실패했습니다."}' \
+               $DISCORD_WEBHOOK_URL
