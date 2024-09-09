@@ -15,12 +15,14 @@ io.on('connection', (socket) => {
   socket.on('enter_room', (nickname, roomName, done) => {
     socket.join(roomName);
     socket['nickname'] = nickname;
+    console.log(`${nickname} joined room: ${roomName}`);
     done();
     io.to(roomName).emit('welcome', nickname);
   });
 
   // 메시지 전송 이벤트
   socket.on('new_message', (msg, roomName, done) => {
+    console.log(`Message from ${socket.nickname} in room ${roomName}: ${msg}`);
     socket.to(roomName).emit('new_message', `${socket.nickname}: ${msg}`);
     done();
   });
@@ -32,6 +34,12 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('A user disconnected:', socket.id);
+  });
+
+  // 에러 핸들링
+  socket.on('error', (error) => {
+    console.error('Socket encountered error:', error);
+    socket.disconnect();
   });
 });
 
