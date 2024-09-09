@@ -10,19 +10,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
-
-      - name: Set up SSH
-        uses: appleboy/ssh-action@v0.1.6
+      - name: Executing remote ssh commands using ssh key
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOST }} # 인스턴스 IP
           username: ${{ secrets.USER_NAME }} # 우분투 아이디
           key: ${{ secrets.KEY }} # ec2 instance pem key
           port: ${{ secrets.PORT }} # 접속포트
           script: | # 실행할 스크립트
-            cd /home/ubuntu/Server || exit 1
+            cd /home/ubuntu/Server
             git pull origin main
             npm install --force
-            pm2 kill || true
+            pm2 kill
             pm2 start src/server.js
