@@ -1,96 +1,38 @@
-import http from 'http';
-// import WebSocket from 'ws';
-import SocketIO from 'socket.io';
-import express from 'express';
+import { Server } from 'socket.io';
 
-const app = express();
+// Socket.io 서버 생성 및 CORS 설정
+const io = new Server(3000, {
+  cors: {
+    origin: '*', // 모든 도메인 허용, 추후 vercel 도메인으로 수정
+  },
+});
 
-app.set('view engine', 'pug');
-app.set('views', __dirname + '/views');
-app.use('/public', express.static(__dirname + '/public'));
-app.get('/', (req, res) => res.render('home'));
-app.get('/*', (req, res) => res.redirect('/'));
+// 사용자 연결 처리
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
 
-const httpServer = http.createServer(app);
-const wsServer = SocketIO(httpServer);
-
-const countRoom = (roomName) => {
-  return wsServer.sockets.adapter.rooms.get(roomName)?.size;
-};
-
-const publicRooms = () => {
-  const {
-    sockets: {
-      adapter: { sids, rooms },
-    },
-  } = wsServer;
-  const publicRooms = [];
-  rooms.forEach((_, key) => {
-    if (sids.get(key) === undefined) {
-      publicRooms.push({
-        roomName: key,
-        roomCount: countRoom(key),
-      });
-    }
-  });
-  return publicRooms;
-};
-
-wsServer.on('connection', (socket) => {
-  wsServer.sockets.emit('room_change', publicRooms());
-
-  socket.onAny((event) => {
-    console.log(`Socket Event: ${event}`);
-  });
-
+  // 방 입장 이벤트
   socket.on('enter_room', (nickname, roomName, done) => {
     socket.join(roomName);
     socket['nickname'] = nickname;
     done();
-    wsServer.to(roomName).emit('welcome', nickname, countRoom(roomName));
-    wsServer.sockets.emit('room_change', publicRooms());
+    io.to(roomName).emit('welcome', nickname);
   });
 
-  socket.on('disconnecting', () => {
-    socket.rooms.forEach((room) =>
-      wsServer.to(room).emit('bye', socket.nickname, countRoom(room) - 1)
-    );
-  });
-
-  socket.on('disconnect', () => {
-    wsServer.sockets.emit('room_change', publicRooms());
-  });
-
+  // 메시지 전송 이벤트
   socket.on('new_message', (msg, roomName, done) => {
     socket.to(roomName).emit('new_message', `${socket.nickname}: ${msg}`);
     done();
   });
+
+  // 사용자 연결 해제 처리
+  socket.on('disconnecting', () => {
+    socket.rooms.forEach((room) => io.to(room).emit('bye', socket.nickname));
+  });
+
+  socket.on('disconnect', () => {
+    console.log('A user disconnected:', socket.id);
+  });
 });
 
-const handleListen = () => console.log('Listening on http://localhost:3000');
-httpServer.listen(3000, handleListen);
-
-/**
- * WebSocket을 이용한 채팅 구현 (서버)
- */
-// const wss = new WebSocket.Server({ httpServer });
-// const sockets = [];
-// wss.on('connection', (socket) => {
-//   sockets.push(socket);
-//   socket['nickname'] = 'Anon';
-//   console.log('Connected to Browser ✅');
-//   socket.on('close', () => console.log('Disconnected from the Browser ❌'));
-//   socket.on('message', (msg) => {
-//     const message = JSON.parse(msg);
-//     switch (message.type) {
-//       case 'new_message':
-//         sockets.forEach((aSocket) =>
-//           aSocket.send(`${socket.nickname}: ${message.payload}`)
-//         );
-//         break;
-//       case 'nickname':
-//         socket['nickname'] = message.payload;
-//         break;
-//     }
-//   });
-// });
+console.log('Socket.IO server running on port 3000 🚀');
