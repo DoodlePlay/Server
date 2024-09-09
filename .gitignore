@@ -1,2 +1,7 @@
 /node_modules
+
+# ec2 pem key
 doodle-play-server.pem
+
+# client connection test file
+index.html

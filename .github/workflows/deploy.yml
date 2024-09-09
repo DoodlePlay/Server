@@ -1,0 +1,25 @@
+name: Deploy to AWS EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: excuting remote ssh commands
+        uses: appleboy/ssh-action@v0.1.6 # ssh 접속하는 오픈소스
+        with:
+          host: ${{ secrets.HOST }} # 인스턴스 IP
+          username: ${{ secrets.USER_NAME }} # 우분투 아이디
+          key: ${{ secrets.KEY }} # ec2 instance pem key
+          port: ${{ secrets.PORT }} # 접속포트
+          script: | # 실행할 스크립트
+            cd /home/ubuntu/Server
+            git pull origin main
+            pm2 kill
+            npm i --force
+            pm2 start src/server.js
