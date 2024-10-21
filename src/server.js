@@ -1,4 +1,16 @@
+import dotenv from 'dotenv';
+import admin from 'firebase-admin';
 import { Server } from 'socket.io';
+
+// Firebase Admin 초기화
+dotenv.config();
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
 
 // Socket.io 서버 생성 및 CORS 설정
 const io = new Server(4000, {
@@ -100,7 +112,7 @@ io.on('connection', (socket) => {
   socket.on('disconnecting', () => {
     console.log(`User ${socket.id} disconnected`);
 
-    socket.rooms.forEach((roomId) => {
+    socket.rooms.forEach(async (roomId) => {
       const gameState = gameRooms[roomId];
 
       if (gameState) {
@@ -112,8 +124,27 @@ io.on('connection', (socket) => {
 
         if (gameState.order.length === 0) {
           delete gameRooms[roomId];
+
+          try {
+            const roomRef = db.collection('GameRooms').doc(roomId);
+            await roomRef.delete();
+          } catch (error) {
+            console.error('Error deleting room from Firestore:', error);
+          }
         } else {
-          socket.to(roomId).emit('gameStateUpdate', gameState);
+          io.to(roomId).emit('gameStateUpdate', gameState);
+
+          try {
+            const roomRef = db.collection('GameRooms').doc(roomId);
+            await roomRef.update({
+              currentPlayers: admin.firestore.FieldValue.increment(-1),
+            });
+          } catch (error) {
+            console.error(
+              'Error decrementing current players in Firestore:',
+              error
+            );
+          }
         }
       }
     });
