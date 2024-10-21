@@ -1,5 +1,8 @@
 /node_modules
 
+# Firebase service account key
+.env
+
 # ec2 pem key
 doodle-play-server.pem
 
