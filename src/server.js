@@ -120,6 +120,11 @@ io.on('connection', (socket) => {
     console.error('Socket encountered error:', error);
     socket.disconnect();
   });
+
+  // 그림 데이터 수신 및 브로드캐스트
+  socket.on('drawing', (roomId, drawingData) => {
+    socket.to(roomId).emit('drawingData', drawingData); // 같은 방에 있는 다른 사용자에게 브로드캐스트
+  });
 });
 
 console.log('Socket.IO server running on port 4000 🚀');
