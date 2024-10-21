@@ -89,7 +89,11 @@ io.on('connection', (socket) => {
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
-    io.to(roomId).emit('newMessage', { nickname, message });
+    io.to(roomId).emit('newMessage', {
+      nickname,
+      message,
+      socketId: socket.id,
+    });
   });
 
   // 게임방 퇴장
