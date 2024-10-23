@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 import admin from 'firebase-admin';
 import { Server } from 'socket.io';
 
+// import { Topics } from './quizTopics.js';
+
 // Firebase Admin 초기화
 dotenv.config();
 
@@ -11,6 +13,24 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
+
+// Firebase topics 생성 (필요시 주석해제)
+// const seedTopics = async () => {
+//   try {
+//     for (const topic of Topics) {
+//       const topicRef = db.collection('Topics').doc();
+//       await topicRef.set({
+//         name: topic.name,
+//         words: topic.words,
+//       });
+//     }
+//     console.log('Topics seeded successfully');
+//   } catch (error) {
+//     console.error('Error seeding topics:', error);
+//   }
+// };
+
+// seedTopics();
 
 // Socket.io 서버 생성 및 CORS 설정
 const io = new Server(4000, {
