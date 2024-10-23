@@ -1,4 +1,18 @@
+import dotenv from 'dotenv';
+import admin from 'firebase-admin';
 import { Server } from 'socket.io';
+
+import { Topics } from './quizTopics.js';
+
+// Firebase Admin 초기화
+dotenv.config();
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+const db = admin.firestore();
 
 // Socket.io 서버 생성 및 CORS 설정
 const io = new Server(4000, {
@@ -21,12 +35,20 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     console.log(`User ${nickname} (ID: ${socket.id}) created room ${roomId}`);
 
+    const getRandomWords = (topicName) => {
+      const topic = Topics.find((t) => t.name === topicName);
+      if (!topic) throw new Error(`Topic ${topicName} not found`);
+
+      const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
+      return shuffleWords;
+    };
+
     gameRooms[roomId] = {
       host: socket.id,
       gameStatus: 'waiting',
       currentDrawer: null,
       currentWord: null,
-      totalWords: [], // 단어카드 DB 작업 이후 주제별 120개의 단어로 초기세팅 (topic 사용)
+      totalWords: getRandomWords(topic),
       selectedWords: [],
       isWordSelected: false,
       selectionDeadline: null,
@@ -89,14 +111,18 @@ io.on('connection', (socket) => {
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
-    io.to(roomId).emit('newMessage', { nickname, message });
+    io.to(roomId).emit('newMessage', {
+      nickname,
+      message,
+      socketId: socket.id,
+    });
   });
 
   // 게임방 퇴장
   socket.on('disconnecting', () => {
     console.log(`User ${socket.id} disconnected`);
 
-    socket.rooms.forEach((roomId) => {
+    socket.rooms.forEach(async (roomId) => {
       const gameState = gameRooms[roomId];
 
       if (gameState) {
@@ -108,8 +134,27 @@ io.on('connection', (socket) => {
 
         if (gameState.order.length === 0) {
           delete gameRooms[roomId];
+
+          try {
+            const roomRef = db.collection('GameRooms').doc(roomId);
+            await roomRef.delete();
+          } catch (error) {
+            console.error('Error deleting room from Firestore:', error);
+          }
         } else {
-          socket.to(roomId).emit('gameStateUpdate', gameState);
+          io.to(roomId).emit('gameStateUpdate', gameState);
+
+          try {
+            const roomRef = db.collection('GameRooms').doc(roomId);
+            await roomRef.update({
+              currentPlayers: admin.firestore.FieldValue.increment(-1),
+            });
+          } catch (error) {
+            console.error(
+              'Error decrementing current players in Firestore:',
+              error
+            );
+          }
         }
       }
     });
