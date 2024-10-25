@@ -58,6 +58,7 @@ io.on('connection', (socket) => {
       turnDeadline: null,
       correctAnswerCount: 0,
       isItemsEnabled,
+      activeItem: null,
       items: {
         ToxicCover: { user: null, status: false },
         GrowingBomb: { user: null, status: false },
@@ -104,6 +105,22 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('gameStateUpdate', gameState);
 
     socket.to(roomId).emit('userJoined', nickname);
+  });
+
+  // 그림 데이터 수신 및 브로드캐스트
+  socket.on('drawing', (roomId, drawingData) => {
+    socket.to(roomId).emit('drawingData', drawingData); // 같은 방에 있는 다른 사용자에게 브로드캐스트
+  });
+
+  // 아이템 사용
+  socket.on('itemUsed', (roomId, itemId) => {
+    const gameState = gameRooms[roomId];
+
+    gameState.activeItem = itemId;
+    gameState.items[itemId].user = socket.id;
+    gameState.items[itemId].status = true;
+
+    io.to(roomId).emit('itemUsedUpdate', gameState);
   });
 
   // 채팅 메시지 전송
@@ -164,11 +181,6 @@ io.on('connection', (socket) => {
   socket.on('error', (error) => {
     console.error('Socket encountered error:', error);
     socket.disconnect();
-  });
-
-  // 그림 데이터 수신 및 브로드캐스트
-  socket.on('drawing', (roomId, drawingData) => {
-    socket.to(roomId).emit('drawingData', drawingData); // 같은 방에 있는 다른 사용자에게 브로드캐스트
   });
 });
 
