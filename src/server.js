@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
   });
 
   // 게임 시작
-  socket.on('startGame', (roomId) => {
+  socket.on('startGame', async (roomId) => {
     const gameState = gameRooms[roomId];
 
     if (!gameState) {
@@ -125,8 +125,24 @@ io.on('connection', (socket) => {
     gameState.round = 1;
     gameState.turn = 1;
     gameState.selectedWords = gameState.totalWords.slice(0, 2);
-
     gameState.selectionDeadline = Date.now() + 5000;
+
+    io.to(roomId).emit('gameStateUpdate', gameState);
+  });
+
+  // 단어 선택
+  socket.on('chooseWord', (roomId, chooseWord) => {
+    const gameState = gameRooms[roomId];
+
+    if (!gameState) {
+      console.error(`Room ${roomId} not found`);
+      return;
+    }
+
+    gameState.currentWord = chooseWord;
+    gameState.isWordSelected = true;
+    gameState.gameStatus = 'drawing';
+    // gameState.turnDeadline = Date.now() + 90000;
 
     io.to(roomId).emit('gameStateUpdate', gameState);
   });
