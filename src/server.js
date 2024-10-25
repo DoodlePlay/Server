@@ -122,6 +122,7 @@ io.on('connection', (socket) => {
     }
 
     gameState.gameStatus = 'choosing';
+    gameState.currentDrawer = gameState.host; // TEST
     gameState.round = 1;
     gameState.turn = 1;
     gameState.selectedWords = gameState.totalWords.slice(0, 2);
