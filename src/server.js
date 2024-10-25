@@ -112,6 +112,25 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('drawingData', drawingData); // 같은 방에 있는 다른 사용자에게 브로드캐스트
   });
 
+  // 게임 시작
+  socket.on('startGame', (roomId) => {
+    const gameState = gameRooms[roomId];
+
+    if (!gameState) {
+      console.error(`Room ${roomId} not found`);
+      return;
+    }
+
+    gameState.gameStatus = 'choosing';
+    gameState.round = 1;
+    gameState.turn = 1;
+    gameState.selectedWords = gameState.totalWords.slice(0, 2);
+
+    gameState.selectionDeadline = Date.now() + 5000;
+
+    io.to(roomId).emit('gameStateUpdate', gameState);
+  });
+
   // 아이템 사용
   socket.on('itemUsed', (roomId, itemId) => {
     const gameState = gameRooms[roomId];
