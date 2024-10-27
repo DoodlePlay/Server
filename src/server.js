@@ -118,31 +118,39 @@ io.on('connection', (socket) => {
 
     if (!gameState) return;
 
-    // 턴이 종료되었는지 확인
     if (Date.now() >= gameState.turnDeadline) {
-      // 다음 플레이어로 넘어가고 currentDrawer를 변경
-      gameState.turn += 1;
-      const nextDrawerIndex = gameState.turn % gameState.order.length;
-      gameState.currentDrawer = gameState.order[nextDrawerIndex];
-
-      // 턴 종료 후 다음 사람이 선택하도록 'choosing' 단계로 변경
-      gameState.gameStatus = 'choosing';
-      gameState.isWordSelected = false;
-      gameState.selectedWords = gameState.totalWords.slice(
-        (gameState.turn - 1) * 2,
-        gameState.turn * 2
-      );
-      gameState.selectionDeadline = Date.now() + 5000; // 선택 시간 5초 설정
-      gameState.turnDeadline = null; // 현재 턴 대기 시간을 초기화
-
-      // 모든 사용자에게 업데이트된 상태 전송
-      io.to(roomId).emit('gameStateUpdate', gameState);
-
-      // 선택 시간이 지나면 턴 시작
-      if (gameState.isWordSelected) {
-        setTimeout(() => startTurn(roomId), 5000);
-      }
+      // 단어가 선택되었고 턴 시간이 종료되었을 때 다음 턴으로 넘어가기
+      proceedToNextDrawer(roomId);
     }
+  };
+
+  // 다음 Drawer로 진행하고 초기화 설정
+  const proceedToNextDrawer = (roomId) => {
+    const gameState = gameRooms[roomId];
+    if (!gameState) return;
+
+    // 순환할 수 있도록 턴을 조정
+    if (gameState.turn === 0) {
+      gameState.turn = 1; // 게임 시작 시 첫 번째 턴으로 초기화
+    } else {
+      gameState.turn += 1; // 이후에는 순차적으로 증가
+    }
+
+    // currentDrawer를 현재 turn에 맞춰 할당
+    const nextDrawerIndex = (gameState.turn - 1) % gameState.order.length;
+    gameState.currentDrawer = gameState.order[nextDrawerIndex];
+
+    // 다음 턴 준비 및 'choosing' 단계로 설정
+    gameState.gameStatus = 'choosing';
+    gameState.isWordSelected = false;
+    gameState.selectedWords = gameState.totalWords.slice(
+      (gameState.turn - 1) * 2,
+      gameState.turn * 2
+    );
+    gameState.selectionDeadline = Date.now() + 5000; // 선택 시간 5초 설정
+    gameState.turnDeadline = null; // 현재 턴 대기 시간을 초기화
+
+    io.to(roomId).emit('gameStateUpdate', gameState);
   };
 
   // 선택 후 턴 시작 및 turnDeadline 설정
@@ -151,17 +159,28 @@ io.on('connection', (socket) => {
 
     if (!gameState) return;
 
-    // 현재 턴이 시작되기 전, 선택 시간이 지난 후에만 `drawing` 상태로 변경
-    if (!gameState.isWordSelected) {
-      gameState.gameStatus = 'choosing';
-      gameState.selectionDeadline = Date.now() + 5000;
+    if (
+      !gameState.isWordSelected &&
+      Date.now() >= gameState.selectionDeadline
+    ) {
+      // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
+      gameState.gameStatus = 'timeOver';
+      io.to(roomId).emit('gameStateUpdate', gameState);
+
+      // 3초 후에 다음 턴으로 전환
+      setTimeout(() => {
+        proceedToNextDrawer(roomId);
+        io.to(roomId).emit('gameStateUpdate', gameState);
+
+        // 다시 5초 후에 선택된 단어가 없으면 다시 TimeOver 상태로 설정
+        setTimeout(() => startTurn(roomId), 5000);
+      }, 3000); // 3초 동안 TimeOver 상태 유지
+    } else if (gameState.isWordSelected) {
+      // 단어가 선택되었을 경우 정상적으로 drawing 단계로 진행
+      gameState.gameStatus = 'drawing';
+      gameState.turnDeadline = Date.now() + 90000; // 90초 그리기 시간 설정
       io.to(roomId).emit('gameStateUpdate', gameState);
     }
-
-    gameState.gameStatus = 'drawing';
-    gameState.turnDeadline = Date.now() + 90000; // 90초 그리기 시간 설정
-
-    io.to(roomId).emit('gameStateUpdate', gameState);
   };
 
   // 게임 시작
@@ -193,10 +212,7 @@ io.on('connection', (socket) => {
 
     io.to(roomId).emit('gameStateUpdate', gameState);
 
-    // 선택 시간이 지나고 확인
-    if (gameState.isWordSelected) {
-      setTimeout(() => startTurn(roomId), 5000);
-    }
+    setTimeout(() => startTurn(roomId), 5000);
   });
 
   // 일정 시간마다 모든 방의 turnDeadline을 체크하고, 만료되었으면 다음 턴으로 넘김
