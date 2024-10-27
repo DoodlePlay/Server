@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
   });
 
   // 게임 시작
-  socket.on('startGame', async (roomId) => {
+  socket.on('startGame', (roomId) => {
     const gameState = gameRooms[roomId];
 
     if (!gameState) {
