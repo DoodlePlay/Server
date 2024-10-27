@@ -128,13 +128,10 @@ io.on('connection', (socket) => {
     gameState.selectedWords = gameState.totalWords.slice(0, 2);
     gameState.selectionDeadline = Date.now() + 5000;
 
-    // TODO : Firebase의 gameStatus를 'playing'으로 업데이트
+    // Firebase의 gameStatus를 'playing'으로 업데이트
     try {
       const roomRef = db.collection('GameRooms').doc(roomId);
       await roomRef.update({ gameStatus: 'playing' });
-      console.log(
-        `Firebase gameStatus updated to 'playing' for room ${roomId}`
-      );
     } catch (error) {
       console.error(
         `Failed to update gameStatus in Firebase for room ${roomId}:`,
