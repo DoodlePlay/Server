@@ -47,7 +47,7 @@ io.on('connection', (socket) => {
       host: socket.id,
       gameStatus: 'waiting',
       currentDrawer: null,
-      currentWord: null,
+      currentWord: '사자',
       totalWords: getRandomWords(topic),
       selectedWords: [],
       isWordSelected: false,
@@ -107,6 +107,19 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('userJoined', nickname);
   });
 
+  socket.on('connectRTC', (roomId) => {
+    socket.broadcast.to(roomId).emit('welcome');
+  });
+  socket.on('offer', (offer, roomId) => {
+    socket.broadcast.to(roomId).emit('offer', offer);
+  });
+  socket.on('answer', (answer, roomId) => {
+    socket.broadcast.to(roomId).emit('answer', answer);
+  });
+  socket.on('ice', (ice, roomId) => {
+    socket.broadcast.to(roomId).emit('ice', ice);
+  });
+
   // 그림 데이터 수신 및 브로드캐스트
   socket.on('drawing', (roomId, drawingData) => {
     socket.to(roomId).emit('drawingData', drawingData); // 같은 방에 있는 다른 사용자에게 브로드캐스트
@@ -125,14 +138,37 @@ io.on('connection', (socket) => {
 
   // 채팅 메시지 전송
   socket.on('sendMessage', (roomId, messageData) => {
+    const gameState = gameRooms[roomId];
+    const adaptiveScore = 10 - gameState.correctAnswerCount * 1; //점점 낮은 점수를 주도록 설정합니다.
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
-    io.to(roomId).emit('newMessage', {
-      nickname,
-      message,
-      socketId: socket.id,
-    });
+    //정답일 경우 메시지 처리
+    if (message === gameState.currentWord) {
+      gameState.participants[socket.id].score += adaptiveScore;
+      if (gameState.correctAnswerCount < gameState.order.length) gameState.correctAnswerCount++;
+      //정답자에게만 정답과 점수를 내려줍니다.
+      socket.emit('privateMessage', gameState.currentWord, adaptiveScore);
+      //다른 사람에게는 안내문구를 내려줍니다
+      socket.to(roomId).emit('correctAnswer', {
+        nickname,
+        message: '❔❔❔',
+        socketId: socket.id,
+      });
+      io.to(roomId).emit('adaptiveScore', {
+        nickname,
+        message: `정답입니다.(+${adaptiveScore}points)`,
+        socketId: socket.id,
+        isScoreMessage: true,
+      });
+      io.to(roomId).emit('gameStateUpdate', gameState);
+    } else {
+      io.to(roomId).emit('newMessage', {
+        nickname,
+        message,
+        socketId: socket.id,
+      });
+    }
   });
 
   // 게임방 퇴장
@@ -167,14 +203,33 @@ io.on('connection', (socket) => {
               currentPlayers: admin.firestore.FieldValue.increment(-1),
             });
           } catch (error) {
-            console.error(
-              'Error decrementing current players in Firestore:',
-              error
-            );
+            console.error('Error decrementing current players in Firestore:', error);
           }
         }
       }
     });
+  });
+
+  socket.on('game start', (roomId) => {
+    const gameState = gameRooms[roomId];
+
+    // 기존 turn 값을 사용해 updatedTurn을 계산
+    const updatedTurn = (gameState.turn % gameState.order.length) + 1;
+
+    // updatedGameState에 updatedTurn을 사용해 turn 값을 설정
+    const updatedGameState = {
+      ...gameState,
+      turn: updatedTurn, // 한 번만 증가된 updatedTurn을 사용
+      currentDrawer: gameState.order[updatedTurn - 1], // 배열 인덱스 맞추기
+    };
+
+    gameRooms[roomId] = updatedGameState; // 업데이트된 상태 저장
+
+    io.to(roomId).emit('game started', updatedGameState);
+    io.to(roomId).emit('roundProcess', gameState.round);
+    console.log(
+      `Turn: ${updatedGameState.turn}, updatedTurn: ${updatedTurn}, Current Drawer: ${updatedGameState.currentDrawer}`
+    );
   });
 
   // 에러 핸들링
