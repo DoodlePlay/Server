@@ -52,6 +52,7 @@ io.on('connection', (socket) => {
       totalWords: getRandomWords(topic),
       selectedWords: [],
       isWordSelected: false,
+      topic,
       selectionDeadline: null,
       maxRound: rounds,
       round: 0,
@@ -145,6 +146,7 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'waiting';
       gameState.selectionDeadline = null;
       gameState.turnDeadline = null;
+      gameState.totalWords = [];
       // Firebase의 gameStatus를 'playing'으로 업데이트
       try {
         const roomRef = db.collection('GameRooms').doc(roomId);
@@ -155,6 +157,7 @@ io.on('connection', (socket) => {
           error
         );
       }
+
       io.to(roomId).emit('gameStateUpdate', gameState);
       return;
     }
@@ -164,7 +167,6 @@ io.on('connection', (socket) => {
     gameState.currentDrawer = gameState.order[nextDrawerIndex];
 
     wordWave += 1;
-    // 다음 턴 준비 및 'choosing' 단계로 설정
     gameState.gameStatus = 'choosing';
     gameState.currentWord = null;
     gameState.isWordSelected = false;
@@ -187,8 +189,6 @@ io.on('connection', (socket) => {
         setTimeout(() => {
           proceedToNextDrawer(roomId);
           io.to(roomId).emit('gameStateUpdate', gameState);
-
-          setTimeout(() => startTurn(roomId), 5000); // 다시 5초 후에 선택된 단어가 없으면 다시 TimeOver 상태로 설정
         }, 3000);
       }
     }, 5000);
@@ -206,6 +206,15 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'drawing';
       gameState.turnDeadline = Date.now() + 90000;
       io.to(roomId).emit('gameStateUpdate', gameState);
+    } else if (Date.now() >= gameState.selectionDeadline) {
+      // 선택 시간이 지나면 timeOver 상태로 전환 후 다음 턴 진행
+      gameState.gameStatus = 'timeOver';
+      io.to(roomId).emit('gameStateUpdate', gameState);
+
+      setTimeout(() => {
+        proceedToNextDrawer(roomId);
+        io.to(roomId).emit('gameStateUpdate', gameState);
+      }, 3000);
     }
   };
 
@@ -219,10 +228,22 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (gameState.totalWords.length < 1) {
+      const getRandomWords = (topicName) => {
+        const topic = Topics.find((t) => t.name === topicName);
+        if (!topic) throw new Error(`Topic ${topicName} not found`);
+
+        const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
+        return shuffleWords;
+      };
+      gameState.totalWords = getRandomWords(gameState.topic);
+    }
+
     gameState.gameStatus = 'choosing';
     gameState.currentDrawer = gameState.host;
     gameState.round = 1;
     gameState.turn = 1;
+
     gameState.selectedWords = gameState.totalWords.slice(0, 2);
     gameState.selectionDeadline = Date.now() + 5000;
 
