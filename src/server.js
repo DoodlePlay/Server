@@ -341,12 +341,17 @@ io.on('connection', (socket) => {
           }
         }
 
+        // TODO : 현재 그림을 그리는 사람이 나가게 되면 어떻게 해야할지
+        if (gameState.currentDrawer === socket.id) {
+          gameState.turnDeadline = Date.now();
+        }
+
         // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
         const playerCount = Object.keys(gameState.participants).length;
         if (playerCount < 3) {
           gameState.gameStatus = 'waiting';
-          gameState.turnDeadline = null;
           gameState.selectionDeadline = null;
+          gameState.turnDeadline = null;
 
           // Firebase의 gameStatus를 업데이트
           try {
