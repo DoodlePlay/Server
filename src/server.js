@@ -22,6 +22,7 @@ const io = new Server(4000, {
 });
 
 const gameRooms = {};
+let wordWave = 0;
 
 // 유저 소켓 연결
 io.on('connection', (socket) => {
@@ -129,26 +130,35 @@ io.on('connection', (socket) => {
     const gameState = gameRooms[roomId];
     if (!gameState) return;
 
-    // 순환할 수 있도록 턴을 조정
-    if (gameState.turn === 0) {
-      gameState.turn = 1; // 게임 시작 시 첫 번째 턴으로 초기화
+    // 턴을 조정해 참여자 수를 넘지 않도록 하고, 턴이 참여자 수와 같으면 라운드를 증가
+    if (gameState.turn >= gameState.order.length) {
+      gameState.turn = 1;
+      gameState.round += 1;
     } else {
-      gameState.turn += 1; // 이후에는 순차적으로 증가
+      gameState.turn += 1;
+    }
+
+    // 게임 종료 조건 확인: 라운드가 maxRound보다 크거나 같으면 게임 종료
+    if (gameState.round > gameState.maxRound) {
+      gameState.gameStatus = 'waiting';
+      io.to(roomId).emit('gameStateUpdate', gameState);
+      return;
     }
 
     // currentDrawer를 현재 turn에 맞춰 할당
     const nextDrawerIndex = (gameState.turn - 1) % gameState.order.length;
     gameState.currentDrawer = gameState.order[nextDrawerIndex];
 
+    wordWave += 1;
     // 다음 턴 준비 및 'choosing' 단계로 설정
     gameState.gameStatus = 'choosing';
     gameState.isWordSelected = false;
     gameState.selectedWords = gameState.totalWords.slice(
-      (gameState.turn - 1) * 2,
-      gameState.turn * 2
+      (wordWave - 1) * 2,
+      wordWave * 2
     );
-    gameState.selectionDeadline = Date.now() + 5000; // 선택 시간 5초 설정
-    gameState.turnDeadline = null; // 현재 턴 대기 시간을 초기화
+    gameState.selectionDeadline = Date.now() + 5000;
+    gameState.turnDeadline = null;
 
     io.to(roomId).emit('gameStateUpdate', gameState);
   };
@@ -172,13 +182,11 @@ io.on('connection', (socket) => {
         proceedToNextDrawer(roomId);
         io.to(roomId).emit('gameStateUpdate', gameState);
 
-        // 다시 5초 후에 선택된 단어가 없으면 다시 TimeOver 상태로 설정
-        setTimeout(() => startTurn(roomId), 5000);
-      }, 3000); // 3초 동안 TimeOver 상태 유지
+        setTimeout(() => startTurn(roomId), 5000); // 다시 5초 후에 선택된 단어가 없으면 다시 TimeOver 상태로 설정
+      }, 3000);
     } else if (gameState.isWordSelected) {
-      // 단어가 선택되었을 경우 정상적으로 drawing 단계로 진행
       gameState.gameStatus = 'drawing';
-      gameState.turnDeadline = Date.now() + 90000; // 90초 그리기 시간 설정
+      gameState.turnDeadline = Date.now() + 90000;
       io.to(roomId).emit('gameStateUpdate', gameState);
     }
   };
@@ -186,6 +194,7 @@ io.on('connection', (socket) => {
   // 게임 시작
   socket.on('startGame', async (roomId) => {
     const gameState = gameRooms[roomId];
+    wordWave = 1;
 
     if (!gameState) {
       console.error(`Room ${roomId} not found`);
