@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('drawingData', drawingData); // 같은 방에 있는 다른 사용자에게 브로드캐스트
   });
 
-  // 게임 진행
+  // 게임 진행 함수 현재 turnDeadline이 되면 다음 턴이 되도록 구현되어 있음. 정답 처리 추가 부분
   const nextTurn = (roomId) => {
     const gameState = gameRooms[roomId];
 
@@ -122,6 +122,8 @@ io.on('connection', (socket) => {
     if (Date.now() >= gameState.turnDeadline) {
       // 단어가 선택되었고 턴 시간이 종료되었을 때 다음 턴으로 넘어가기
       proceedToNextDrawer(roomId);
+      startTurn(roomId);
+      // TODO : 정답을 다 맞췄을 때 해당 부분에 작업
     }
   };
 
@@ -141,6 +143,8 @@ io.on('connection', (socket) => {
     // 게임 종료 조건 확인: 라운드가 maxRound보다 크거나 같으면 게임 종료
     if (gameState.round > gameState.maxRound) {
       gameState.gameStatus = 'waiting';
+      gameState.selectionDeadline = null;
+      gameState.turnDeadline = null;
       io.to(roomId).emit('gameStateUpdate', gameState);
       return;
     }
@@ -166,8 +170,7 @@ io.on('connection', (socket) => {
   // 선택 후 턴 시작 및 turnDeadline 설정
   const startTurn = (roomId) => {
     const gameState = gameRooms[roomId];
-
-    if (!gameState) return;
+    if (!gameState || gameState.gameStatus === 'waiting') return;
 
     if (
       !gameState.isWordSelected &&
@@ -229,7 +232,11 @@ io.on('connection', (socket) => {
     Object.keys(gameRooms).forEach((roomId) => {
       const gameState = gameRooms[roomId];
 
-      if (gameState && gameState.turnDeadline) {
+      if (
+        gameState &&
+        gameState.turnDeadline &&
+        gameState.gameStatus !== 'waiting'
+      ) {
         nextTurn(roomId);
       }
     });
