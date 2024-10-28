@@ -332,6 +332,36 @@ io.on('connection', (socket) => {
 
         socket.to(roomId).emit('userLeft', nickname);
 
+        // 현재 방장이 나가면 차례대로 들어온 사람을 방장으로 지정
+        if (gameState.host === socket.id) {
+          const remainingUsers = gameState.order;
+          if (remainingUsers.length > 0) {
+            gameState.host = remainingUsers[0];
+            console.log(`New host assigned: ${gameState.host}`);
+          }
+        }
+
+        // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
+        const playerCount = Object.keys(gameState.participants).length;
+        if (playerCount < 3) {
+          gameState.gameStatus = 'waiting';
+          gameState.turnDeadline = null;
+          gameState.selectionDeadline = null;
+
+          // Firebase의 gameStatus를 업데이트
+          try {
+            const roomRef = db.collection('GameRooms').doc(roomId);
+            await roomRef.update({ gameStatus: 'waiting' });
+          } catch (error) {
+            console.error(
+              `Failed to update gameStatus in Firebase for room ${roomId}:`,
+              error
+            );
+          }
+        }
+
+        io.to(roomId).emit('gameStateUpdate', gameState);
+
         if (gameState.order.length === 0) {
           delete gameRooms[roomId];
 
