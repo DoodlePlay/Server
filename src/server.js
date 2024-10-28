@@ -122,13 +122,13 @@ io.on('connection', (socket) => {
     if (Date.now() >= gameState.turnDeadline) {
       // 단어가 선택되었고 턴 시간이 종료되었을 때 다음 턴으로 넘어가기
       proceedToNextDrawer(roomId);
-      startTurn(roomId);
+
       // TODO : 정답을 다 맞췄을 때 해당 부분에 작업
     }
   };
 
   // 다음 Drawer로 진행하고 초기화 설정
-  const proceedToNextDrawer = (roomId) => {
+  const proceedToNextDrawer = async (roomId) => {
     const gameState = gameRooms[roomId];
     if (!gameState) return;
 
@@ -145,6 +145,16 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'waiting';
       gameState.selectionDeadline = null;
       gameState.turnDeadline = null;
+      // Firebase의 gameStatus를 'playing'으로 업데이트
+      try {
+        const roomRef = db.collection('GameRooms').doc(roomId);
+        await roomRef.update({ gameStatus: 'waiting' });
+      } catch (error) {
+        console.error(
+          `Failed to update gameStatus in Firebase for room ${roomId}:`,
+          error
+        );
+      }
       io.to(roomId).emit('gameStateUpdate', gameState);
       return;
     }
@@ -156,6 +166,7 @@ io.on('connection', (socket) => {
     wordWave += 1;
     // 다음 턴 준비 및 'choosing' 단계로 설정
     gameState.gameStatus = 'choosing';
+    gameState.currentWord = null;
     gameState.isWordSelected = false;
     gameState.selectedWords = gameState.totalWords.slice(
       (wordWave - 1) * 2,
@@ -163,6 +174,24 @@ io.on('connection', (socket) => {
     );
     gameState.selectionDeadline = Date.now() + 5000;
     gameState.turnDeadline = null;
+    setTimeout(() => {
+      if (
+        !gameState.isWordSelected &&
+        Date.now() >= gameState.selectionDeadline
+      ) {
+        // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
+        gameState.gameStatus = 'timeOver';
+        io.to(roomId).emit('gameStateUpdate', gameState);
+
+        // 3초 후에 다음 턴으로 전환
+        setTimeout(() => {
+          proceedToNextDrawer(roomId);
+          io.to(roomId).emit('gameStateUpdate', gameState);
+
+          setTimeout(() => startTurn(roomId), 5000); // 다시 5초 후에 선택된 단어가 없으면 다시 TimeOver 상태로 설정
+        }, 3000);
+      }
+    }, 5000);
 
     io.to(roomId).emit('gameStateUpdate', gameState);
   };
@@ -171,23 +200,9 @@ io.on('connection', (socket) => {
   const startTurn = (roomId) => {
     const gameState = gameRooms[roomId];
     if (!gameState || gameState.gameStatus === 'waiting') return;
+    // 턴 시작 시 초기화: 단어 선택 상태 및 현재 단어 초기화
 
-    if (
-      !gameState.isWordSelected &&
-      Date.now() >= gameState.selectionDeadline
-    ) {
-      // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
-      gameState.gameStatus = 'timeOver';
-      io.to(roomId).emit('gameStateUpdate', gameState);
-
-      // 3초 후에 다음 턴으로 전환
-      setTimeout(() => {
-        proceedToNextDrawer(roomId);
-        io.to(roomId).emit('gameStateUpdate', gameState);
-
-        setTimeout(() => startTurn(roomId), 5000); // 다시 5초 후에 선택된 단어가 없으면 다시 TimeOver 상태로 설정
-      }, 3000);
-    } else if (gameState.isWordSelected) {
+    if (gameState.isWordSelected) {
       gameState.gameStatus = 'drawing';
       gameState.turnDeadline = Date.now() + 90000;
       io.to(roomId).emit('gameStateUpdate', gameState);
