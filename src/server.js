@@ -176,6 +176,7 @@ io.on('connection', (socket) => {
     );
     gameState.selectionDeadline = Date.now() + 5000;
     gameState.turnDeadline = null;
+    io.to(roomId).emit('clearCanvas');
     setTimeout(() => {
       if (
         !gameState.isWordSelected &&
@@ -358,6 +359,7 @@ io.on('connection', (socket) => {
           );
           gameState.selectionDeadline = Date.now() + 5000;
           gameState.turnDeadline = null;
+          io.to(roomId).emit('clearCanvas');
           setTimeout(() => {
             if (
               !gameState.isWordSelected &&
