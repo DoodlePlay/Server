@@ -60,7 +60,6 @@ io.on('connection', (socket) => {
       turnDeadline: null,
       correctAnswerCount: 0,
       isItemsEnabled,
-      activeItem: null,
       items: {
         toxicCover: { user: null, status: false },
         growingBomb: { user: null, status: false },
@@ -304,7 +303,6 @@ io.on('connection', (socket) => {
   socket.on('itemUsed', (roomId, itemId) => {
     const gameState = gameRooms[roomId];
 
-    gameState.activeItem = itemId;
     gameState.items[itemId].user = socket.id;
     gameState.items[itemId].status = true;
 
