@@ -352,6 +352,7 @@ io.on('connection', (socket) => {
           gameState.gameStatus = 'waiting';
           gameState.selectionDeadline = null;
           gameState.turnDeadline = null;
+          gameState.round = 10;
 
           // Firebase의 gameStatus를 업데이트
           try {
