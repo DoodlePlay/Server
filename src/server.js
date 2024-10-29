@@ -133,6 +133,15 @@ io.on('connection', (socket) => {
     const gameState = gameRooms[roomId];
     if (!gameState) return;
 
+    // items 초기화
+    gameState.items = {
+      toxicCover: { user: null, status: false },
+      growingBomb: { user: null, status: false },
+      phantomReverse: { user: null, status: false },
+      laundryFlip: { user: null, status: false },
+      timeCutter: { user: null, status: false },
+    };
+
     // 턴을 조정해 참여자 수를 넘지 않도록 하고, 턴이 참여자 수와 같으면 라운드를 증가
     if (gameState.turn >= gameState.order.length) {
       gameState.turn = 1;
