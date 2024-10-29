@@ -146,7 +146,6 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'waiting';
       gameState.selectionDeadline = null;
       gameState.turnDeadline = null;
-      gameState.totalWords = getRandomWords(gameState.topic);
 
       // Firebase의 gameStatus를 'waiting'으로 업데이트
       try {
@@ -239,6 +238,7 @@ io.on('connection', (socket) => {
     gameState.currentDrawer = gameState.host;
     gameState.round = 1;
     gameState.turn = 1;
+    gameState.totalWords = getRandomWords(gameState.topic);
 
     gameState.selectedWords = gameState.totalWords.slice(0, 2);
     gameState.selectionDeadline = Date.now() + 5000;
