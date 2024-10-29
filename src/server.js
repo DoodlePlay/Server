@@ -24,6 +24,14 @@ const io = new Server(4000, {
 const gameRooms = {};
 let wordWave = 0;
 
+const getRandomWords = (topicName) => {
+  const topic = Topics.find((t) => t.name === topicName);
+  if (!topic) throw new Error(`Topic ${topicName} not found`);
+
+  const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
+  return shuffleWords;
+};
+
 // 유저 소켓 연결
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
@@ -35,14 +43,6 @@ io.on('connection', (socket) => {
 
     socket.join(roomId);
     console.log(`User ${nickname} (ID: ${socket.id}) created room ${roomId}`);
-
-    const getRandomWords = (topicName) => {
-      const topic = Topics.find((t) => t.name === topicName);
-      if (!topic) throw new Error(`Topic ${topicName} not found`);
-
-      const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
-      return shuffleWords;
-    };
 
     gameRooms[roomId] = {
       host: socket.id,
@@ -146,15 +146,9 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'waiting';
       gameState.selectionDeadline = null;
       gameState.turnDeadline = null;
-      const getRandomWords = (topicName) => {
-        const topic = Topics.find((t) => t.name === topicName);
-        if (!topic) throw new Error(`Topic ${topicName} not found`);
-
-        const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
-        return shuffleWords;
-      };
       gameState.totalWords = getRandomWords(gameState.topic);
-      // Firebase의 gameStatus를 'playing'으로 업데이트
+
+      // Firebase의 gameStatus를 'waiting'으로 업데이트
       try {
         const roomRef = db.collection('GameRooms').doc(roomId);
         await roomRef.update({ gameStatus: 'waiting' });
@@ -170,7 +164,7 @@ io.on('connection', (socket) => {
     }
 
     // currentDrawer를 현재 turn에 맞춰 할당
-    const nextDrawerIndex = (gameState.turn - 1) % gameState.order.length;
+    const nextDrawerIndex = gameState.turn - 1;
     gameState.currentDrawer = gameState.order[nextDrawerIndex];
 
     wordWave += 1;
@@ -183,7 +177,9 @@ io.on('connection', (socket) => {
     );
     gameState.selectionDeadline = Date.now() + 5000;
     gameState.turnDeadline = null;
+
     io.to(roomId).emit('clearCanvas');
+
     setTimeout(() => {
       if (
         !gameState.isWordSelected &&
@@ -214,7 +210,10 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'drawing';
       gameState.turnDeadline = Date.now() + 90000;
       io.to(roomId).emit('gameStateUpdate', gameState);
-    } else if (Date.now() >= gameState.selectionDeadline) {
+    } else if (
+      Date.now() >= gameState.selectionDeadline &&
+      gameState.gameStatus !== 'waiting'
+    ) {
       // 선택 시간이 지나면 timeOver 상태로 전환 후 다음 턴 진행
       gameState.gameStatus = 'timeOver';
       io.to(roomId).emit('gameStateUpdate', gameState);
@@ -340,9 +339,7 @@ io.on('connection', (socket) => {
 
         // 현재 그림을 그리는 출제자가 나가면 다음 순서로 지정
         if (gameState.currentDrawer === socket.id) {
-          const currentDrawerIndex = gameState.order.indexOf(socket.id);
-          const nextDrawerIndex =
-            (currentDrawerIndex + 1) % gameState.order.length;
+          const nextDrawerIndex = gameState.turn - 1;
           gameState.currentDrawer = gameState.order[nextDrawerIndex];
 
           wordWave += 1;
@@ -381,7 +378,6 @@ io.on('connection', (socket) => {
           gameState.gameStatus = 'waiting';
           gameState.selectionDeadline = null;
           gameState.turnDeadline = null;
-          gameState.round = 10;
 
           io.to(roomId).emit('gameStateUpdate', gameState);
 
