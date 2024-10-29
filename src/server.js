@@ -146,7 +146,14 @@ io.on('connection', (socket) => {
       gameState.gameStatus = 'waiting';
       gameState.selectionDeadline = null;
       gameState.turnDeadline = null;
-      gameState.totalWords = [];
+      const getRandomWords = (topicName) => {
+        const topic = Topics.find((t) => t.name === topicName);
+        if (!topic) throw new Error(`Topic ${topicName} not found`);
+
+        const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
+        return shuffleWords;
+      };
+      gameState.totalWords = getRandomWords(gameState.topic);
       // Firebase의 gameStatus를 'playing'으로 업데이트
       try {
         const roomRef = db.collection('GameRooms').doc(roomId);
@@ -227,17 +234,6 @@ io.on('connection', (socket) => {
     if (!gameState) {
       console.error(`Room ${roomId} not found`);
       return;
-    }
-
-    if (gameState.totalWords.length < 1) {
-      const getRandomWords = (topicName) => {
-        const topic = Topics.find((t) => t.name === topicName);
-        if (!topic) throw new Error(`Topic ${topicName} not found`);
-
-        const shuffleWords = [...topic.words].sort(() => Math.random() - 0.5);
-        return shuffleWords;
-      };
-      gameState.totalWords = getRandomWords(gameState.topic);
     }
 
     gameState.gameStatus = 'choosing';
