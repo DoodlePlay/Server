@@ -299,7 +299,7 @@ io.on('connection', (socket) => {
     gameState.items[itemId].user = socket.id;
     gameState.items[itemId].status = true;
 
-    io.to(roomId).emit('itemUsedUpdate', gameState);
+    io.to(roomId).emit('gameStateUpdate', gameState);
   });
 
   // 채팅 메시지 전송
@@ -319,103 +319,107 @@ io.on('connection', (socket) => {
     console.log(`User ${socket.id} disconnected`);
 
     socket.rooms.forEach(async (roomId) => {
+      if (roomId === socket.id) return;
+
       const gameState = gameRooms[roomId];
 
-      if (gameState) {
-        const nickname = gameState.participants[socket.id].nickname;
-        delete gameState.participants[socket.id];
-        gameState.order = gameState.order.filter((id) => id !== socket.id);
+      if (!gameState) return console.error(`Room ${roomId} not found`);
 
-        socket.to(roomId).emit('userLeft', nickname);
+      const nickname = gameState.participants[socket.id].nickname;
+      delete gameState.participants[socket.id];
+      gameState.order = gameState.order.filter((id) => id !== socket.id);
 
-        // 현재 방장이 나가면 차례대로 들어온 사람을 방장으로 지정
-        if (gameState.host === socket.id) {
-          const remainingUsers = gameState.order;
-          if (remainingUsers.length > 0) {
-            gameState.host = remainingUsers[0];
-            console.log(`New host assigned: ${gameState.host}`);
-          }
+      // 방에 남은 사람이 없으면 DB에서 방 삭제
+      if (gameState.order.length === 0) {
+        delete gameRooms[roomId];
+
+        try {
+          const roomRef = db.collection('GameRooms').doc(roomId);
+          await roomRef.delete();
+          return;
+        } catch (error) {
+          console.error('Error deleting room from Firestore:', error);
         }
+      }
 
-        // 현재 그림을 그리는 출제자가 나가면 다음 순서로 지정
-        if (gameState.currentDrawer === socket.id) {
-          const nextDrawerIndex = gameState.turn - 1;
-          gameState.currentDrawer = gameState.order[nextDrawerIndex];
+      // 방에 남은 사람에게 시스템 메세지 전송 및 gameState DB 업데이트
+      socket.to(roomId).emit('userLeft', nickname);
+      io.to(roomId).emit('gameStateUpdate', gameState);
 
-          wordWave += 1;
-          gameState.gameStatus = 'choosing';
-          gameState.currentWord = null;
-          gameState.isWordSelected = false;
-          gameState.selectedWords = gameState.totalWords.slice(
-            (wordWave - 1) * 2,
-            wordWave * 2
-          );
-          gameState.selectionDeadline = Date.now() + 5000;
-          gameState.turnDeadline = null;
-          io.to(roomId).emit('clearCanvas');
-          setTimeout(() => {
-            if (
-              !gameState.isWordSelected &&
-              Date.now() >= gameState.selectionDeadline &&
-              gameState.gameStatus !== 'waiting'
-            ) {
-              // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
-              gameState.gameStatus = 'timeOver';
+      try {
+        const roomRef = db.collection('GameRooms').doc(roomId);
+        await roomRef.update({
+          currentPlayers: admin.firestore.FieldValue.increment(-1),
+        });
+      } catch (error) {
+        console.error(
+          'Error decrementing current players in Firestore:',
+          error
+        );
+      }
+
+      // 현재 방장이 나가면 차례대로 들어온 사람을 방장으로 지정
+      if (gameState.host === socket.id) {
+        const remainingUsers = gameState.order;
+        if (remainingUsers.length > 0) {
+          gameState.host = remainingUsers[0];
+          console.log(`New host assigned: ${gameState.host}`);
+        }
+      }
+
+      // 현재 그림을 그리는 출제자가 나가면 다음 순서로 지정
+      if (gameState.currentDrawer === socket.id) {
+        const nextDrawerIndex = gameState.turn - 1;
+        gameState.currentDrawer = gameState.order[nextDrawerIndex];
+
+        wordWave += 1;
+        gameState.gameStatus = 'choosing';
+        gameState.currentWord = null;
+        gameState.isWordSelected = false;
+        gameState.selectedWords = gameState.totalWords.slice(
+          (wordWave - 1) * 2,
+          wordWave * 2
+        );
+        gameState.selectionDeadline = Date.now() + 5000;
+        gameState.turnDeadline = null;
+        io.to(roomId).emit('clearCanvas');
+        setTimeout(() => {
+          if (
+            !gameState.isWordSelected &&
+            Date.now() >= gameState.selectionDeadline &&
+            gameState.gameStatus !== 'waiting'
+          ) {
+            // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
+            gameState.gameStatus = 'timeOver';
+            io.to(roomId).emit('gameStateUpdate', gameState);
+
+            // 3초 후에 다음 턴으로 전환
+            setTimeout(() => {
+              proceedToNextDrawer(roomId);
               io.to(roomId).emit('gameStateUpdate', gameState);
-
-              // 3초 후에 다음 턴으로 전환
-              setTimeout(() => {
-                proceedToNextDrawer(roomId);
-                io.to(roomId).emit('gameStateUpdate', gameState);
-              }, 3000);
-            }
-          }, 5000);
-        }
-
-        // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
-        const playerCount = Object.keys(gameState.participants).length;
-        if (playerCount < 3) {
-          gameState.gameStatus = 'waiting';
-          gameState.selectionDeadline = null;
-          gameState.turnDeadline = null;
-
-          io.to(roomId).emit('gameStateUpdate', gameState);
-
-          // Firebase의 gameStatus를 업데이트
-          try {
-            const roomRef = db.collection('GameRooms').doc(roomId);
-            await roomRef.update({ gameStatus: 'waiting' });
-          } catch (error) {
-            console.error(
-              `Failed to update gameStatus in Firebase for room ${roomId}:`,
-              error
-            );
+            }, 3000);
           }
-        }
+        }, 5000);
+      }
 
-        if (gameState.order.length === 0) {
-          delete gameRooms[roomId];
+      // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
+      const playerCount = Object.keys(gameState.participants).length;
+      if (playerCount < 3) {
+        gameState.gameStatus = 'waiting';
+        gameState.selectionDeadline = null;
+        gameState.turnDeadline = null;
 
-          try {
-            const roomRef = db.collection('GameRooms').doc(roomId);
-            await roomRef.delete();
-          } catch (error) {
-            console.error('Error deleting room from Firestore:', error);
-          }
-        } else {
-          io.to(roomId).emit('gameStateUpdate', gameState);
+        io.to(roomId).emit('gameStateUpdate', gameState);
 
-          try {
-            const roomRef = db.collection('GameRooms').doc(roomId);
-            await roomRef.update({
-              currentPlayers: admin.firestore.FieldValue.increment(-1),
-            });
-          } catch (error) {
-            console.error(
-              'Error decrementing current players in Firestore:',
-              error
-            );
-          }
+        // Firebase의 gameStatus를 업데이트
+        try {
+          const roomRef = db.collection('GameRooms').doc(roomId);
+          await roomRef.update({ gameStatus: 'waiting' });
+        } catch (error) {
+          console.error(
+            `Failed to update gameStatus in Firebase for room ${roomId}:`,
+            error
+          );
         }
       }
     });
