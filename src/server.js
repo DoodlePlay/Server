@@ -341,9 +341,40 @@ io.on('connection', (socket) => {
           }
         }
 
-        // TODO : 현재 그림을 그리는 사람이 나가게 되면 어떻게 해야할지
+        // 현재 그림을 그리는 출제자가 나가면 다음 순서로 지정
         if (gameState.currentDrawer === socket.id) {
-          gameState.turnDeadline = Date.now();
+          const currentDrawerIndex = gameState.order.indexOf(socket.id);
+          const nextDrawerIndex =
+            (currentDrawerIndex + 1) % gameState.order.length;
+          gameState.currentDrawer = gameState.order[nextDrawerIndex];
+
+          wordWave += 1;
+          gameState.gameStatus = 'choosing';
+          gameState.currentWord = null;
+          gameState.isWordSelected = false;
+          gameState.selectedWords = gameState.totalWords.slice(
+            (wordWave - 1) * 2,
+            wordWave * 2
+          );
+          gameState.selectionDeadline = Date.now() + 5000;
+          gameState.turnDeadline = null;
+          setTimeout(() => {
+            if (
+              !gameState.isWordSelected &&
+              Date.now() >= gameState.selectionDeadline &&
+              gameState.gameStatus !== 'waiting'
+            ) {
+              // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
+              gameState.gameStatus = 'timeOver';
+              io.to(roomId).emit('gameStateUpdate', gameState);
+
+              // 3초 후에 다음 턴으로 전환
+              setTimeout(() => {
+                proceedToNextDrawer(roomId);
+                io.to(roomId).emit('gameStateUpdate', gameState);
+              }, 3000);
+            }
+          }, 5000);
         }
 
         // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
@@ -353,6 +384,8 @@ io.on('connection', (socket) => {
           gameState.selectionDeadline = null;
           gameState.turnDeadline = null;
           gameState.round = 10;
+
+          io.to(roomId).emit('gameStateUpdate', gameState);
 
           // Firebase의 gameStatus를 업데이트
           try {
@@ -365,8 +398,6 @@ io.on('connection', (socket) => {
             );
           }
         }
-
-        io.to(roomId).emit('gameStateUpdate', gameState);
 
         if (gameState.order.length === 0) {
           delete gameRooms[roomId];
