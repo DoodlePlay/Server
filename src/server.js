@@ -241,6 +241,11 @@ io.on('connection', (socket) => {
     gameState.turn = 1;
     gameState.totalWords = getRandomWords(gameState.topic);
 
+    // 모든 참가자의 점수를 0으로 초기화
+    Object.keys(gameState.participants).forEach((socketId) => {
+      gameState.participants[socketId].score = 0;
+    });
+
     gameState.selectedWords = gameState.totalWords.slice(0, 2);
     gameState.selectionDeadline = Date.now() + 5000;
 
