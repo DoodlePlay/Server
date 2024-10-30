@@ -338,6 +338,13 @@ io.on('connection', (socket) => {
       io.to(roomId).emit('toxicEffectPositions', toxicPositions);
     }
 
+    if (itemId === 'timeCutter') {
+      if (gameState.turnDeadline) {
+        const remainingTime = Math.max(gameState.turnDeadline - Date.now(), 0);
+        gameState.turnDeadline = Date.now() + remainingTime / 2;
+      }
+    }
+
     io.to(roomId).emit('gameStateUpdate', gameState);
   });
 
