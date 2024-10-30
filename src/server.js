@@ -3,6 +3,8 @@ import admin from 'firebase-admin';
 import { Server } from 'socket.io';
 
 import { Topics } from './quizTopics.js';
+import matchCounter from './matchCounter.js';
+import drawerScoreCalculator from './drawerScore.js';
 
 // Firebase Admin 초기화
 dotenv.config();
@@ -47,7 +49,7 @@ io.on('connection', (socket) => {
       host: socket.id,
       gameStatus: 'waiting',
       currentDrawer: null,
-      currentWord: '사자',
+      currentWord: '',
       totalWords: getRandomWords(topic),
       selectedWords: [],
       isWordSelected: false,
@@ -59,6 +61,7 @@ io.on('connection', (socket) => {
       correctAnswerCount: 0,
       isItemsEnabled,
       activeItem: null,
+      correctAnsweredUser: [],
       items: {
         ToxicCover: { user: null, status: false },
         GrowingBomb: { user: null, status: false },
@@ -105,19 +108,6 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('gameStateUpdate', gameState);
 
     socket.to(roomId).emit('userJoined', nickname);
-  });
-
-  socket.on('connectRTC', (roomId) => {
-    socket.broadcast.to(roomId).emit('welcome');
-  });
-  socket.on('offer', (offer, roomId) => {
-    socket.broadcast.to(roomId).emit('offer', offer);
-  });
-  socket.on('answer', (answer, roomId) => {
-    socket.broadcast.to(roomId).emit('answer', answer);
-  });
-  socket.on('ice', (ice, roomId) => {
-    socket.broadcast.to(roomId).emit('ice', ice);
   });
 
   // 그림 데이터 수신 및 브로드캐스트
@@ -179,25 +169,80 @@ io.on('connection', (socket) => {
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
-    //정답일 경우 메시지 처리
-    if (message === gameState.currentWord) {
-      gameState.participants[socket.id].score += adaptiveScore;
-      if (gameState.correctAnswerCount < gameState.order.length) gameState.correctAnswerCount++;
-      //정답자에게만 정답과 점수를 내려줍니다.
-      socket.emit('privateMessage', gameState.currentWord, adaptiveScore);
-      //다른 사람에게는 안내문구를 내려줍니다
-      socket.to(roomId).emit('correctAnswer', {
+    //정답은 아니지만 정답과 2글자 이상 겹칠 때
+    if (
+      !gameState.correctAnsweredUser.includes(socket.id) &&
+      message !== gameState.currentWord &&
+      matchCounter(message, gameState.currentWord) > gameState.currentWord.length / 2
+    ) {
+      socket.emit('closeAnswer', {
         nickname,
-        message: '❔❔❔',
+        message: '정답에 근접했습니다!',
         socketId: socket.id,
       });
-      io.to(roomId).emit('adaptiveScore', {
+      return;
+    }
+    //
+    if (message !== gameState.currentWord && message.includes(gameState.currentWord)) {
+      if (gameState.correctAnsweredUser.includes(socket.id)) {
+        socket.emit('cheating', {
+          nickname,
+          message: '🚫 정답이 포함된 메시지입니다.',
+          socketId: socket.id,
+        });
+        return;
+      }
+    }
+
+    //정답일 경우 메시지 및 점수 처리
+    if (message === gameState.currentWord) {
+      if (gameState.correctAnsweredUser.includes(socket.id)) {
+        socket.emit('cheating', {
+          nickname,
+          message: '🚫 정답이 포함된 메시지입니다.',
+          socketId: socket.id,
+        });
+        return;
+      } // 이미 맞춘 사람이 또 다시 정답을 썼을 때
+
+      gameState.participants[socket.id].score += adaptiveScore;
+      io.to(roomId).emit('playScoreAnimation', socket.id, adaptiveScore);
+      gameState.participants[gameState.currentDrawer].score += drawerScoreCalculator(
+        gameState.order.length,
+        gameState.correctAnswerCount
+      );
+      io.to(roomId).emit(
+        'playDrawerScoreAnimation',
+        gameState.currentDrawer,
+        drawerScoreCalculator(gameState.order.length, gameState.correctAnswerCount)
+      );
+      gameState.correctAnsweredUser.push(socket.id);
+      if (gameState.correctAnswerCount < gameState.order.length) {
+        gameState.correctAnswerCount++;
+      }
+      //정답자의 클라이언트에만 정답과 점수를 전송합니다.
+      socket.emit('privateMessage', gameState.currentWord, adaptiveScore);
+      socket.emit('adaptiveScore', {
         nickname,
         message: `정답입니다.(+${adaptiveScore}points)`,
         socketId: socket.id,
-        isScoreMessage: true,
+        isPrivateCorrectMessage: true,
       });
+      //정답자 이외의 클라이언트에게는 안내문구를 전송합니다.
+      socket.to(roomId).emit('correctAnswer', {
+        nickname,
+        message: '❗❔❗❔❗❔',
+        socketId: socket.id,
+      });
+      socket.to(roomId).emit('correctAnswer', {
+        nickname,
+        message: `✔️ ${nickname} 님 정답입니다.(+${adaptiveScore}points)`,
+        socketId: socket.id,
+        isCorrectMessage: true,
+      });
+
       io.to(roomId).emit('gameStateUpdate', gameState);
+      // io.to(roomId).emit('roundProcess', gameState.round); //test용 코드
     } else {
       io.to(roomId).emit('newMessage', {
         nickname,
@@ -220,6 +265,7 @@ io.on('connection', (socket) => {
         gameState.order = gameState.order.filter((id) => id !== socket.id);
 
         socket.to(roomId).emit('userLeft', nickname);
+        io.to(roomId).emit('gameStateUpdate', gameState);
 
         if (gameState.order.length === 0) {
           delete gameRooms[roomId];
@@ -244,28 +290,6 @@ io.on('connection', (socket) => {
         }
       }
     });
-  });
-
-  socket.on('game start', (roomId) => {
-    const gameState = gameRooms[roomId];
-
-    // 기존 turn 값을 사용해 updatedTurn을 계산
-    const updatedTurn = (gameState.turn % gameState.order.length) + 1;
-
-    // updatedGameState에 updatedTurn을 사용해 turn 값을 설정
-    const updatedGameState = {
-      ...gameState,
-      turn: updatedTurn, // 한 번만 증가된 updatedTurn을 사용
-      currentDrawer: gameState.order[updatedTurn - 1], // 배열 인덱스 맞추기
-    };
-
-    gameRooms[roomId] = updatedGameState; // 업데이트된 상태 저장
-
-    io.to(roomId).emit('game started', updatedGameState);
-    io.to(roomId).emit('roundProcess', gameState.round);
-    console.log(
-      `Turn: ${updatedGameState.turn}, updatedTurn: ${updatedTurn}, Current Drawer: ${updatedGameState.currentDrawer}`
-    );
   });
 
   // 에러 핸들링
