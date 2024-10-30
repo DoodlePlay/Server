@@ -129,6 +129,7 @@ io.on('connection', (socket) => {
         message: `정답은 '${gameState.currentWord}' 입니다. `,
         isAnnounceAnswer: true,
       });
+      //시간 초과로 인해 턴이 변경되기전 정답자 수에 따른 출제자 정답 부여 및 아바타효과 렌더링
       if (gameState.correctAnswerCount > 0 && gameState.correctAnswerCount < gameState.order.length - 1) {
         gameState.participants[gameState.currentDrawer].score += 10;
         io.to(roomId).emit('playDrawerScoreAnimation', gameState.currentDrawer, 10);
@@ -308,12 +309,12 @@ io.on('connection', (socket) => {
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
-    //정답은 아니지만 정답과 2글자 이상 겹칠 때
+    //정답과 비슷한 채팅을 쳤을 때
     if (
       !gameState.correctAnsweredUser.includes(socket.id) &&
       !gameState.currentDrawer.includes(socket.id) &&
       message !== gameState.currentWord &&
-      matchCounter(message, gameState.currentWord) > gameState.currentWord.length / 2
+      matchCounter(message, gameState.currentWord) > gameState.currentWord.length / 2 //정답과 일치하는 글자 수가 1/2 보다 많으면
     ) {
       socket.emit('closeAnswer', {
         nickname,
@@ -322,7 +323,7 @@ io.on('connection', (socket) => {
       });
       return;
     }
-    //
+    //정답은 아니더라도 정답을 포함하는 채팅일 경우 블록처리(정답자 또는 출제자의 경우에만)
     if (message !== gameState.currentWord && message.includes(gameState.currentWord)) {
       if (gameState.correctAnsweredUser.includes(socket.id) || gameState.currentDrawer.includes(socket.id)) {
         socket.emit('cheating', {
@@ -336,7 +337,7 @@ io.on('connection', (socket) => {
 
     //정답일 경우 메시지 및 점수 처리
     if (message === gameState.currentWord) {
-      // 이미 맞춘 사람이 또 다시 정답을 썼을 때
+      // 정답자 또는 출제자가 정답을 썼을 때
       if (gameState.correctAnsweredUser.includes(socket.id) || gameState.currentDrawer.includes(socket.id)) {
         socket.emit('cheating', {
           nickname,
@@ -345,11 +346,11 @@ io.on('connection', (socket) => {
         });
         return;
       }
-
+      //정답을 맞춘 유저에게 점수를 부여하고 아바타 효과를 렌더링
       gameState.participants[socket.id].score += adaptiveScore;
       io.to(roomId).emit('playScoreAnimation', socket.id, adaptiveScore);
+      gameState.correctAnsweredUser.push(socket.id); //정답을 맞춘 그룹에 해당 유저를 추가
 
-      gameState.correctAnsweredUser.push(socket.id);
       if (gameState.correctAnswerCount < gameState.order.length) {
         gameState.correctAnswerCount++;
       }
@@ -367,6 +368,7 @@ io.on('connection', (socket) => {
         message: '❗❔❗❔❗❔',
         socketId: socket.id,
       });
+      //시스템 메시지로 다른 유저의 정답을 안내합니다.
       socket.to(roomId).emit('correctAnswer', {
         nickname,
         message: `✔️ ${nickname} 님 정답입니다.(+${adaptiveScore}points)`,
@@ -375,7 +377,6 @@ io.on('connection', (socket) => {
       });
 
       io.to(roomId).emit('gameStateUpdate', gameState);
-      // io.to(roomId).emit('roundProcess', gameState.round); //test용 코드
     } else {
       io.to(roomId).emit('newMessage', {
         nickname,
@@ -388,6 +389,8 @@ io.on('connection', (socket) => {
     if (gameState.correctAnswerCount === gameState.order.length - 1) {
       gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
       io.to(roomId).emit('playDrawerScoreAnimation', gameState.currentDrawer, 8);
+
+      //턴이 종료될 때 해당 라운드의 정답 안내
       io.to(roomId).emit('announceAnswer', {
         nickname: 'System',
         message: `정답은 '${gameState.currentWord}' 입니다. `,
