@@ -211,7 +211,7 @@ io.on('connection', (socket) => {
 
     if (gameState.isWordSelected) {
       gameState.gameStatus = 'drawing';
-      gameState.turnDeadline = Date.now() + 20000;
+      gameState.turnDeadline = Date.now() + 90000;
       io.to(roomId).emit('gameStateUpdate', gameState);
     } else if (Date.now() >= gameState.selectionDeadline && gameState.gameStatus !== 'waiting') {
       // 선택 시간이 지나면 timeOver 상태로 전환 후 다음 턴 진행
@@ -285,7 +285,7 @@ io.on('connection', (socket) => {
     gameState.currentWord = chooseWord;
     gameState.isWordSelected = true;
     gameState.gameStatus = 'drawing';
-    gameState.turnDeadline = Date.now() + 20000;
+    gameState.turnDeadline = Date.now() + 90000;
 
     io.to(roomId).emit('gameStateUpdate', gameState);
   });
