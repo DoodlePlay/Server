@@ -1,5 +1,5 @@
 function matchCounter(word1, word2) {
-  const countChars = (word) => {
+  const countChars = word => {
     const counts = {};
     for (const char of word) {
       counts[char] = (counts[char] || 0) + 1;
