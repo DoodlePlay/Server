@@ -4,7 +4,6 @@ import { Server } from 'socket.io';
 
 import { Topics } from './quizTopics.js';
 import matchCounter from './matchCounter.js';
-import drawerScoreCalculator from './drawerScore.js';
 
 // Firebase Admin 초기화
 dotenv.config();
@@ -125,9 +124,17 @@ io.on('connection', (socket) => {
 
     if (Date.now() >= gameState.turnDeadline) {
       // 단어가 선택되었고 턴 시간이 종료되었을 때 다음 턴으로 넘어가기
-      proceedToNextDrawer(roomId);
+      io.to(roomId).emit('announceAnswer', {
+        nickname: 'System',
+        message: `정답은 '${gameState.currentWord}' 입니다. `,
+        isAnnounceAnswer: true,
+      });
+      if (gameState.correctAnswerCount > 0 && gameState.correctAnswerCount < gameState.order.length - 1) {
+        gameState.participants[gameState.currentDrawer].score += 10;
+        io.to(roomId).emit('playDrawerScoreAnimation', gameState.currentDrawer, 10);
+      }
 
-      // TODO : 정답을 다 맞췄을 때 해당 부분에 작업
+      proceedToNextDrawer(roomId);
     }
   };
 
@@ -140,6 +147,7 @@ io.on('connection', (socket) => {
     if (gameState.turn >= gameState.order.length) {
       gameState.turn = 1;
       gameState.round += 1;
+      io.to(roomId).emit('roundProcess', gameState.round);
     } else {
       gameState.turn += 1;
     }
@@ -155,10 +163,7 @@ io.on('connection', (socket) => {
         const roomRef = db.collection('GameRooms').doc(roomId);
         await roomRef.update({ gameStatus: 'waiting' });
       } catch (error) {
-        console.error(
-          `Failed to update gameStatus in Firebase for room ${roomId}:`,
-          error
-        );
+        console.error(`Failed to update gameStatus in Firebase for room ${roomId}:`, error);
       }
 
       io.to(roomId).emit('gameStateUpdate', gameState);
@@ -173,20 +178,16 @@ io.on('connection', (socket) => {
     gameState.gameStatus = 'choosing';
     gameState.currentWord = null;
     gameState.isWordSelected = false;
-    gameState.selectedWords = gameState.totalWords.slice(
-      (wordWave - 1) * 2,
-      wordWave * 2
-    );
+    gameState.selectedWords = gameState.totalWords.slice((wordWave - 1) * 2, wordWave * 2);
     gameState.selectionDeadline = Date.now() + 5000;
     gameState.turnDeadline = null;
+    gameState.correctAnswerCount = 0;
+    gameState.correctAnsweredUser = [];
 
     io.to(roomId).emit('clearCanvas');
 
     setTimeout(() => {
-      if (
-        !gameState.isWordSelected &&
-        Date.now() >= gameState.selectionDeadline
-      ) {
+      if (!gameState.isWordSelected && Date.now() >= gameState.selectionDeadline) {
         // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
         gameState.gameStatus = 'timeOver';
         io.to(roomId).emit('gameStateUpdate', gameState);
@@ -210,12 +211,9 @@ io.on('connection', (socket) => {
 
     if (gameState.isWordSelected) {
       gameState.gameStatus = 'drawing';
-      gameState.turnDeadline = Date.now() + 90000;
+      gameState.turnDeadline = Date.now() + 20000;
       io.to(roomId).emit('gameStateUpdate', gameState);
-    } else if (
-      Date.now() >= gameState.selectionDeadline &&
-      gameState.gameStatus !== 'waiting'
-    ) {
+    } else if (Date.now() >= gameState.selectionDeadline && gameState.gameStatus !== 'waiting') {
       // 선택 시간이 지나면 timeOver 상태로 전환 후 다음 턴 진행
       gameState.gameStatus = 'timeOver';
       io.to(roomId).emit('gameStateUpdate', gameState);
@@ -251,10 +249,7 @@ io.on('connection', (socket) => {
       const roomRef = db.collection('GameRooms').doc(roomId);
       await roomRef.update({ gameStatus: 'playing' });
     } catch (error) {
-      console.error(
-        `Failed to update gameStatus in Firebase for room ${roomId}:`,
-        error
-      );
+      console.error(`Failed to update gameStatus in Firebase for room ${roomId}:`, error);
     }
 
     io.to(roomId).emit('gameStateUpdate', gameState);
@@ -267,11 +262,7 @@ io.on('connection', (socket) => {
     Object.keys(gameRooms).forEach((roomId) => {
       const gameState = gameRooms[roomId];
 
-      if (
-        gameState &&
-        gameState.turnDeadline &&
-        gameState.gameStatus !== 'waiting'
-      ) {
+      if (gameState && gameState.turnDeadline && gameState.gameStatus !== 'waiting') {
         nextTurn(roomId);
       }
     });
@@ -289,7 +280,7 @@ io.on('connection', (socket) => {
     gameState.currentWord = chooseWord;
     gameState.isWordSelected = true;
     gameState.gameStatus = 'drawing';
-    gameState.turnDeadline = Date.now() + 90000;
+    gameState.turnDeadline = Date.now() + 20000;
 
     io.to(roomId).emit('gameStateUpdate', gameState);
   });
@@ -315,6 +306,7 @@ io.on('connection', (socket) => {
     //정답은 아니지만 정답과 2글자 이상 겹칠 때
     if (
       !gameState.correctAnsweredUser.includes(socket.id) &&
+      !gameState.currentDrawer.includes(socket.id) &&
       message !== gameState.currentWord &&
       matchCounter(message, gameState.currentWord) > gameState.currentWord.length / 2
     ) {
@@ -327,7 +319,7 @@ io.on('connection', (socket) => {
     }
     //
     if (message !== gameState.currentWord && message.includes(gameState.currentWord)) {
-      if (gameState.correctAnsweredUser.includes(socket.id)) {
+      if (gameState.correctAnsweredUser.includes(socket.id) || gameState.currentDrawer.includes(socket.id)) {
         socket.emit('cheating', {
           nickname,
           message: '🚫 정답이 포함된 메시지입니다.',
@@ -339,26 +331,19 @@ io.on('connection', (socket) => {
 
     //정답일 경우 메시지 및 점수 처리
     if (message === gameState.currentWord) {
-      if (gameState.correctAnsweredUser.includes(socket.id)) {
+      // 이미 맞춘 사람이 또 다시 정답을 썼을 때
+      if (gameState.correctAnsweredUser.includes(socket.id) || gameState.currentDrawer.includes(socket.id)) {
         socket.emit('cheating', {
           nickname,
           message: '🚫 정답이 포함된 메시지입니다.',
           socketId: socket.id,
         });
         return;
-      } // 이미 맞춘 사람이 또 다시 정답을 썼을 때
+      }
 
       gameState.participants[socket.id].score += adaptiveScore;
       io.to(roomId).emit('playScoreAnimation', socket.id, adaptiveScore);
-      gameState.participants[gameState.currentDrawer].score += drawerScoreCalculator(
-        gameState.order.length,
-        gameState.correctAnswerCount
-      );
-      io.to(roomId).emit(
-        'playDrawerScoreAnimation',
-        gameState.currentDrawer,
-        drawerScoreCalculator(gameState.order.length, gameState.correctAnswerCount)
-      );
+
       gameState.correctAnsweredUser.push(socket.id);
       if (gameState.correctAnswerCount < gameState.order.length) {
         gameState.correctAnswerCount++;
@@ -392,6 +377,21 @@ io.on('connection', (socket) => {
         message,
         socketId: socket.id,
       });
+    }
+
+    //모든 유저가 정답을 맞추면 다음턴으로 진행
+    if (gameState.correctAnswerCount === gameState.order.length - 1) {
+      gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
+      io.to(roomId).emit('playDrawerScoreAnimation', gameState.currentDrawer, 8);
+      io.to(roomId).emit('announceAnswer', {
+        nickname: 'System',
+        message: `정답은 '${gameState.currentWord}' 입니다. `,
+        isAnnounceAnswer: true,
+      });
+      setTimeout(() => {
+        proceedToNextDrawer(roomId);
+        io.to(roomId).emit('gameStateUpdate', gameState);
+      }, 2500);
     }
   });
 
@@ -428,10 +428,7 @@ io.on('connection', (socket) => {
           gameState.gameStatus = 'choosing';
           gameState.currentWord = null;
           gameState.isWordSelected = false;
-          gameState.selectedWords = gameState.totalWords.slice(
-            (wordWave - 1) * 2,
-            wordWave * 2
-          );
+          gameState.selectedWords = gameState.totalWords.slice((wordWave - 1) * 2, wordWave * 2);
           gameState.selectionDeadline = Date.now() + 5000;
           gameState.turnDeadline = null;
           io.to(roomId).emit('clearCanvas');
@@ -468,10 +465,7 @@ io.on('connection', (socket) => {
             const roomRef = db.collection('GameRooms').doc(roomId);
             await roomRef.update({ gameStatus: 'waiting' });
           } catch (error) {
-            console.error(
-              `Failed to update gameStatus in Firebase for room ${roomId}:`,
-              error
-            );
+            console.error(`Failed to update gameStatus in Firebase for room ${roomId}:`, error);
           }
         }
 
