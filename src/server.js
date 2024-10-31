@@ -163,7 +163,11 @@ io.on('connection', socket => {
     if (gameState.turn >= gameState.order.length) {
       gameState.turn = 1;
       gameState.round += 1;
-      io.to(roomId).emit('roundProcess', gameState.round);
+      io.to(roomId).emit('roundProcess', {
+        nickname: 'System',
+        message: `━━━━━━━━━━━━━━━━━━ ${gameState.round} 라운드 ━━━━━━━━━━━━━━━━━━`,
+        isRoundMessage: true,
+      });
     } else {
       gameState.turn += 1;
     }
@@ -437,7 +441,11 @@ io.on('connection', socket => {
         gameState.correctAnswerCount++;
       }
       //정답자의 클라이언트에만 정답과 점수를 전송합니다.
-      socket.emit('privateMessage', gameState.currentWord, adaptiveScore);
+      socket.emit('privateMessage', {
+        nickname,
+        message: `✔️  ${gameState.currentWord}`,
+        socketId: socket.id,
+      });
       socket.emit('adaptiveScore', {
         nickname,
         message: `정답입니다.(+${adaptiveScore}points)`,
