@@ -220,6 +220,7 @@ io.on('connection', socket => {
       gameState.correctAnsweredUser = [];
 
       io.to(roomId).emit('clearCanvas');
+      io.to(roomId).emit('gameStateUpdate', gameState);
 
       setTimeout(() => {
         if (
@@ -229,9 +230,8 @@ io.on('connection', socket => {
           // 단어가 선택되지 않은 경우, TimeOver 상태로 전환
           if (gameState.gameStatus !== 'gameOver') {
             gameState.gameStatus = 'timeOver';
+            io.to(roomId).emit('gameStateUpdate', gameState);
           }
-
-          io.to(roomId).emit('gameStateUpdate', gameState);
 
           // 3초 후에 다음 턴으로 전환
           setTimeout(() => {
@@ -241,7 +241,6 @@ io.on('connection', socket => {
         }
       }, 5000);
     }
-    io.to(roomId).emit('gameStateUpdate', gameState);
   };
 
   // 선택 후 턴 시작 및 turnDeadline 설정
@@ -403,7 +402,6 @@ io.on('connection', socket => {
 
     //정답과 비슷한 채팅을 쳤을 때
     if (
-      gameState.gameStatus === 'drawing' && // DH bug
       !gameState.correctAnsweredUser.includes(socket.id) &&
       !gameState.currentDrawer.includes(socket.id) &&
       message !== gameState.currentWord &&
@@ -423,10 +421,8 @@ io.on('connection', socket => {
       message.includes(gameState.currentWord)
     ) {
       if (
-        (gameState.gameStatus === 'drawing' && // DH bug
-          gameState.correctAnsweredUser.includes(socket.id)) ||
-        (gameState.gameStatus === 'drawing' && // DH bug
-          gameState.currentDrawer.includes(socket.id))
+        gameState.correctAnsweredUser.includes(socket.id) ||
+        gameState.currentDrawer.includes(socket.id)
       ) {
         socket.emit('cheating', {
           nickname,
@@ -495,10 +491,7 @@ io.on('connection', socket => {
     }
 
     //모든 유저가 정답을 맞추면 다음턴으로 진행
-    if (
-      gameState.correctAnswerCount === gameState.order.length - 1 &&
-      gameState.gameStatus === 'drawing' // DH bug
-    ) {
+    if (gameState.correctAnswerCount === gameState.order.length - 1) {
       gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
       io.to(roomId).emit(
         'playDrawerScoreAnimation',
@@ -566,13 +559,14 @@ io.on('connection', socket => {
       // 현재 방장이 나가면 차례대로 들어온 사람을 방장으로 지정
       if (gameState.host === socket.id) {
         const remainingUsers = gameState.order;
+
         if (remainingUsers.length > 0) {
           gameState.host = remainingUsers[0];
           io.to(roomId).emit('gameStateUpdate', gameState);
         }
       }
 
-      // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환\
+      // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
       if (gameState.order.length <= 2) {
         await finishedGame(roomId);
         return;
@@ -584,6 +578,7 @@ io.on('connection', socket => {
         gameState.currentDrawer = gameState.order[nextDrawerIndex];
 
         wordWave += 1;
+
         gameState.gameStatus = 'choosing';
         gameState.currentWord = null;
         gameState.isWordSelected = false;
@@ -592,6 +587,7 @@ io.on('connection', socket => {
           wordWave * 2
         );
         gameState.selectionDeadline = Date.now() + 5000;
+
         gameState.turnDeadline = null;
         io.to(roomId).emit('clearCanvas');
         io.to(roomId).emit('gameStateUpdate', gameState);
@@ -608,9 +604,8 @@ io.on('connection', socket => {
 
             // 3초 후에 다음 턴으로 전환
             setTimeout(() => {
-              if (gameState.gameStatus !== 'gameOver') {
-                proceedToNextDrawer(roomId);
-              }
+              proceedToNextDrawer(roomId);
+              io.to(roomId).emit('gameStateUpdate', gameState);
             }, 3000);
           }
         }, 5000);
