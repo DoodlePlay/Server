@@ -569,6 +569,7 @@ io.on('connection', socket => {
       // 남은 플레이어 수가 3명 미만이면 게임을 대기 상태로 전환
       if (gameState.order.length <= 2) {
         await finishedGame(roomId);
+        io.to(roomId).emit('gameStateUpdate', gameState);
         return;
       }
 
