@@ -385,6 +385,16 @@ io.on('connection', socket => {
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
+    //waiting 상태 일 경우 조건과 상관없이 메세지를 전송
+    if (gameState.gameStatus === 'waiting') {
+      io.to(roomId).emit('newMessage', {
+        nickname,
+        message,
+        socketId: socket.id,
+      });
+      return;
+    }
+
     //정답과 비슷한 채팅을 쳤을 때
     if (
       !gameState.correctAnsweredUser.includes(socket.id) &&
