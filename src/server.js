@@ -18,7 +18,8 @@ const db = admin.firestore();
 // Socket.io 서버 생성 및 CORS 설정
 const io = new Server(4000, {
   cors: {
-    origin: '*', // 모든 도메인 허용, 추후 vercel 도메인으로 수정
+    origin: 'https://www.doodleplay.xyz', // production 도메인만 허용
+    // origin: '*', // local 개발 시 모든 도메인 허용
   },
 });
 
