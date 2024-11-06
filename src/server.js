@@ -400,6 +400,25 @@ io.on('connection', socket => {
       }
     }
 
+    const itemDetails = {
+      toxicCover: { emoji: '☠️', name: 'Toxic Cover' },
+      growingBomb: { emoji: '💣', name: 'Growing Bomb' },
+      phantomReverse: { emoji: '👻', name: 'Phantom Reverse' },
+      laundryFlip: { emoji: '🌀', name: 'Laundry Flip' },
+      timeCutter: { emoji: '⏳', name: 'Time Cutter' },
+    };
+
+    const { emoji, name: itemName } = itemDetails[itemId] || {};
+    const nickname = gameState.participants[socket.id].nickname;
+
+    if (emoji && itemName) {
+      io.to(roomId).emit('itemMessage', {
+        nickname: 'System',
+        message: `${emoji} ${nickname}님이 ${itemName} 발동! ${emoji} `,
+        isItemMessage: true,
+      });
+    }
+
     io.to(roomId).emit('gameStateUpdate', gameState);
   });
 
