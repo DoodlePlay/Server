@@ -124,6 +124,15 @@ io.on('connection', socket => {
     gameState.selectionDeadline = null;
     gameState.turnDeadline = null;
 
+    // items 초기화
+    gameState.items = {
+      toxicCover: { user: null, status: false },
+      growingBomb: { user: null, status: false },
+      phantomReverse: { user: null, status: false },
+      laundryFlip: { user: null, status: false },
+      timeCutter: { user: null, status: false },
+    };
+
     // Firebase의 gameStatus를 'waiting'으로 업데이트
     try {
       const roomRef = db.collection('GameRooms').doc(roomId);
