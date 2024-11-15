@@ -187,6 +187,11 @@ io.on('connection', socket => {
     ) {
       gameState.turn = 1;
       gameState.round += 1;
+      // 게임 종료 조건 확인: 라운드가 maxRound보다 크거나 같으면 게임 종료
+      if (gameState.round > gameState.maxRound) {
+        finishedGame(roomId);
+        return;
+      }
       io.to(roomId).emit('roundProcess', {
         nickname: 'System',
         message: `━━━━━━━━━━━━━━━━━━ ${gameState.round} 라운드 ━━━━━━━━━━━━━━━━━━`,
@@ -196,11 +201,6 @@ io.on('connection', socket => {
       gameState.turn += 1;
     }
 
-    // 게임 종료 조건 확인: 라운드가 maxRound보다 크거나 같으면 게임 종료
-    if (gameState.round > gameState.maxRound) {
-      finishedGame(roomId);
-      return;
-    }
     if (gameState.gameStatus !== 'gameOver') {
       // currentDrawer를 현재 turn에 맞춰 할당
       const nextDrawerIndex = gameState.turn - 1;
@@ -288,6 +288,8 @@ io.on('connection', socket => {
     gameState.currentWord = null;
     gameState.isWordSelected = false;
     gameState.totalWords = getRandomWords(gameState.topic);
+    gameState.correctAnswerCount = 0;
+    gameState.correctAnsweredUser = [];
 
     // 모든 참가자의 점수를 0으로 초기화
     Object.keys(gameState.participants).forEach(socketId => {
@@ -307,7 +309,11 @@ io.on('connection', socket => {
         error
       );
     }
-
+    io.to(roomId).emit('roundProcess', {
+      nickname: 'System',
+      message: `━━━━━━━━━━━━━━━━━━ ${gameState.round} 라운드 ━━━━━━━━━━━━━━━━━━`,
+      isRoundMessage: true,
+    });
     io.to(roomId).emit('gameStateUpdate', gameState);
 
     setTimeout(() => startTurn(roomId), 5000);
@@ -525,27 +531,6 @@ io.on('connection', socket => {
         socketId: socket.id,
       });
     }
-
-    // //모든 유저가 정답을 맞추면 다음턴으로 진행
-    // if (gameState.correctAnswerCount === gameState.order.length - 1) {
-    //   gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
-    //   io.to(roomId).emit(
-    //     'playDrawerScoreAnimation',
-    //     gameState.currentDrawer,
-    //     8
-    //   );
-
-    //   //턴이 종료될 때 해당 라운드의 정답 안내
-    //   io.to(roomId).emit('announceAnswer', {
-    //     nickname: 'System',
-    //     message: `정답은 '${gameState.currentWord}' 입니다. `,
-    //     isAnnounceAnswer: true,
-    //   });
-    //   setTimeout(() => {
-    //     proceedToNextDrawer(roomId);
-    //     io.to(roomId).emit('gameStateUpdate', gameState);
-    //   }, 2500);
-    // }
   });
 
   // 게임방 퇴장
