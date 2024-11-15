@@ -403,7 +403,10 @@ io.on('connection', socket => {
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
     //waiting 상태 일 경우 조건과 상관없이 메세지를 전송
-    if (gameState.gameStatus === 'waiting') {
+    if (
+      gameState.gameStatus === 'waiting' ||
+      gameState.gameStatus === 'gameOver'
+    ) {
       io.to(roomId).emit('newMessage', {
         nickname,
         message,
@@ -492,6 +495,27 @@ io.on('connection', socket => {
         socketId: socket.id,
         isCorrectMessage: true,
       });
+      //모든 유저가 정답을 맞추면 다음턴으로 진행
+      if (gameState.correctAnswerCount === gameState.order.length - 1) {
+        gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
+        io.to(roomId).emit(
+          'playDrawerScoreAnimation',
+          gameState.currentDrawer,
+          8
+        );
+
+        //턴이 종료될 때 해당 라운드의 정답 안내
+        io.to(roomId).emit('announceAnswer', {
+          nickname: 'System',
+          message: `정답은 '${gameState.currentWord}' 입니다. `,
+          isAnnounceAnswer: true,
+        });
+        setTimeout(() => {
+          proceedToNextDrawer(roomId);
+          io.to(roomId).emit('gameStateUpdate', gameState);
+        }, 2500);
+        return;
+      }
 
       io.to(roomId).emit('gameStateUpdate', gameState);
     } else {
@@ -502,26 +526,26 @@ io.on('connection', socket => {
       });
     }
 
-    //모든 유저가 정답을 맞추면 다음턴으로 진행
-    if (gameState.correctAnswerCount === gameState.order.length - 1) {
-      gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
-      io.to(roomId).emit(
-        'playDrawerScoreAnimation',
-        gameState.currentDrawer,
-        8
-      );
+    // //모든 유저가 정답을 맞추면 다음턴으로 진행
+    // if (gameState.correctAnswerCount === gameState.order.length - 1) {
+    //   gameState.participants[gameState.currentDrawer].score += 8; //전원 정답이므로 출제자 8점
+    //   io.to(roomId).emit(
+    //     'playDrawerScoreAnimation',
+    //     gameState.currentDrawer,
+    //     8
+    //   );
 
-      //턴이 종료될 때 해당 라운드의 정답 안내
-      io.to(roomId).emit('announceAnswer', {
-        nickname: 'System',
-        message: `정답은 '${gameState.currentWord}' 입니다. `,
-        isAnnounceAnswer: true,
-      });
-      setTimeout(() => {
-        proceedToNextDrawer(roomId);
-        io.to(roomId).emit('gameStateUpdate', gameState);
-      }, 2500);
-    }
+    //   //턴이 종료될 때 해당 라운드의 정답 안내
+    //   io.to(roomId).emit('announceAnswer', {
+    //     nickname: 'System',
+    //     message: `정답은 '${gameState.currentWord}' 입니다. `,
+    //     isAnnounceAnswer: true,
+    //   });
+    //   setTimeout(() => {
+    //     proceedToNextDrawer(roomId);
+    //     io.to(roomId).emit('gameStateUpdate', gameState);
+    //   }, 2500);
+    // }
   });
 
   // 게임방 퇴장
