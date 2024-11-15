@@ -285,6 +285,8 @@ io.on('connection', socket => {
     gameState.currentDrawer = gameState.host;
     gameState.round = 1;
     gameState.turn = 1;
+    gameState.currentWord = null;
+    gameState.isWordSelected = false;
     gameState.totalWords = getRandomWords(gameState.topic);
 
     // 모든 참가자의 점수를 0으로 초기화
