@@ -425,7 +425,8 @@ io.on('connection', socket => {
     if (
       !gameState.correctAnsweredUser.includes(socket.id) &&
       !gameState.currentDrawer.includes(socket.id) &&
-      message !== gameState.currentWord &&
+      message.replace(/\s+/g, '') !==
+        gameState.currentWord.replace(/\s+/g, '') &&
       matchCounter(message, gameState.currentWord) >
         gameState.currentWord.length / 2 //정답과 일치하는 글자 수가 1/2 보다 많으면
     ) {
@@ -455,7 +456,9 @@ io.on('connection', socket => {
     }
 
     //정답일 경우 메시지 및 점수 처리
-    if (message === gameState.currentWord) {
+    if (
+      message.replace(/\s+/g, '') === gameState.currentWord.replace(/\s+/g, '')
+    ) {
       // 정답자 또는 출제자가 정답을 썼을 때
       if (
         gameState.correctAnsweredUser.includes(socket.id) ||
