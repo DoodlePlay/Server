@@ -1,5 +1,9 @@
 function matchCounter(word1, word2) {
   const countChars = word => {
+    if (typeof word === null) {
+      word = ''; // currentWord가 null로 초기화 되었을 경우 에러 처리
+    }
+
     const counts = {};
     for (const char of word) {
       counts[char] = (counts[char] || 0) + 1;
