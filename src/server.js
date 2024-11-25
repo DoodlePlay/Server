@@ -485,6 +485,7 @@ io.on('connection', socket => {
         message: `✔️  ${gameState.currentWord}`,
         socketId: socket.id,
       });
+      socket.emit('success');
       socket.emit('adaptiveScore', {
         nickname,
         message: `정답입니다.(+${adaptiveScore}points)`,
