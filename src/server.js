@@ -18,7 +18,8 @@ const db = admin.firestore();
 // Socket.io 서버 생성 및 CORS 설정
 const io = new Server(4000, {
   cors: {
-    origin: '*', // 모든 도메인 허용, 추후 vercel 도메인으로 수정
+    origin: 'https://www.doodleplay.xyz', // production 도메인만 허용
+    // origin: '*', // local 개발 시 모든 도메인 허용
   },
 });
 
@@ -122,6 +123,15 @@ io.on('connection', socket => {
     gameState.gameStatus = 'gameOver';
     gameState.selectionDeadline = null;
     gameState.turnDeadline = null;
+
+    // items 초기화
+    gameState.items = {
+      toxicCover: { user: null, status: false },
+      growingBomb: { user: null, status: false },
+      phantomReverse: { user: null, status: false },
+      laundryFlip: { user: null, status: false },
+      timeCutter: { user: null, status: false },
+    };
 
     // Firebase의 gameStatus를 'waiting'으로 업데이트
     try {
@@ -405,6 +415,25 @@ io.on('connection', socket => {
         const remainingTime = Math.max(gameState.turnDeadline - Date.now(), 0);
         gameState.turnDeadline = Date.now() + remainingTime / 2;
       }
+    }
+
+    const itemDetails = {
+      toxicCover: { emoji: '☠️', name: 'Toxic Cover' },
+      growingBomb: { emoji: '💣', name: 'Growing Bomb' },
+      phantomReverse: { emoji: '👻', name: 'Phantom Reverse' },
+      laundryFlip: { emoji: '🌀', name: 'Laundry Flip' },
+      timeCutter: { emoji: '⏳', name: 'Time Cutter' },
+    };
+
+    const { emoji, name: itemName } = itemDetails[itemId] || {};
+    const nickname = gameState.participants[socket.id].nickname;
+
+    if (emoji && itemName) {
+      io.to(roomId).emit('itemMessage', {
+        nickname: 'System',
+        message: `${emoji} ${nickname}님이 ${itemName} 발동! ${emoji} `,
+        isItemMessage: true,
+      });
     }
 
     io.to(roomId).emit('gameStateUpdate', gameState);
