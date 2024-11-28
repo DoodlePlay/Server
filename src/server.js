@@ -291,6 +291,15 @@ io.on('connection', socket => {
       return;
     }
 
+    // items 초기화
+    gameState.items = {
+      toxicCover: { user: null, status: false },
+      growingBomb: { user: null, status: false },
+      phantomReverse: { user: null, status: false },
+      laundryFlip: { user: null, status: false },
+      timeCutter: { user: null, status: false },
+    };
+
     gameState.gameStatus = 'choosing';
     gameState.currentDrawer = gameState.host;
     gameState.round = 1;
