@@ -446,7 +446,7 @@ io.on('connection', socket => {
     const { nickname, message } = messageData;
     console.log(`${nickname} sent message in room ${roomId}: ${message}`);
 
-    //waiting 상태 일 경우 조건과 상관없이 메세지를 전송
+    //drawing 상태가 아닐 경우 조건과 상관없이 메세지를 전송
     if (gameState.gameStatus !== 'drawing') {
       io.to(roomId).emit('newMessage', {
         nickname,
